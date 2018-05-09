@@ -26,11 +26,11 @@ class D4ScienceAuthenticator(Authenticator):
 
     @gen.coroutine
     def authenticate(self, handler, data=None):
-        token = handler.get_argument("gcube-token", "")
+        token = handler.get_argument('gcube-token', '')
         http_client = AsyncHTTPClient()
         url = url_concat(url_path_join(D4SCIENCE_SOCIAL_URL,
                                        D4SCIENCE_PROFILE),
-                        {"gcube-token": token})
+                        {'gcube-token': token})
         req = HTTPRequest(url, method='GET')
         try:
             resp = yield http_client.fetch(req)
@@ -45,7 +45,19 @@ class D4ScienceAuthenticator(Authenticator):
             raise web.HTTPError(403)
 
         self.log.info('%s is now authenticated!', username)
-        return {"name": username, "auth_state": resp_json['result']}
+        auth_state = {'gcube-token': token}
+        auth_state.update(resp_json['result'])
+        return {'name': username, 'auth_state': auth_state}
+
+    @gen.coroutine
+    def pre_spawn_start(self, user, spawner):
+        """Pass gcube-token to spawner via environment variable"""
+        auth_state = yield user.get_auth_state()
+        if not auth_state:
+            # auth_state not enabled
+            return
+        spawner.environment['GCUBE_TOKEN'] = auth_state['gcube-token']
+
 
 
 class LocalD4ScienceAuthenticator(LocalAuthenticator,
