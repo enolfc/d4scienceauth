@@ -47,12 +47,14 @@ class D4ScienceAuthenticator(Authenticator):
         self.log.info('%s is now authenticated!', username)
         auth_state = {'gcube-token': token}
         auth_state.update(resp_json['result'])
+        self.log.info('SECRET %s', auth_state)
         return {'name': username, 'auth_state': auth_state}
 
     @gen.coroutine
     def pre_spawn_start(self, user, spawner):
         """Pass gcube-token to spawner via environment variable"""
         auth_state = yield user.get_auth_state()
+        self.log.info('SO SO SECRET %s', auth_state)
         if not auth_state:
             # auth_state not enabled
             return
