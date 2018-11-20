@@ -34,14 +34,16 @@ class D4ScienceAuthenticator(Authenticator):
         req = HTTPRequest(url, method='GET')
         try:
             resp = yield http_client.fetch(req)
-        except HTTPError:
+        except HTTPError as e:
             # whatever, get out
+            self.log.warning('Something happened with gcube service: %s', e)
             raise web.HTTPError(403)
 
         resp_json = json.loads(resp.body.decode('utf8', 'replace'))
 
         username = resp_json.get('result', {}).get('username', '')
         if not username:
+            self.log.error('Unable to get the user from gcube?')
             raise web.HTTPError(403)
 
         self.log.info('%s is now authenticated!', username)
