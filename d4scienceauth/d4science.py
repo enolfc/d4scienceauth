@@ -1,9 +1,10 @@
 """D4Science Authenticator for JupyterHub
 """
 
+import base64
+import hashlib
 import json
 import os
-import base64
 
 from tornado import gen, web
 
@@ -47,9 +48,11 @@ class D4ScienceAuthenticator(Authenticator):
             raise web.HTTPError(403)
 
         self.log.info('%s is now authenticated!', username)
-        auth_state = {'gcube-token': token}
+        auth_state = {'gcube-token': token, 'gcube-user': username}
         auth_state.update(resp_json['result'])
-        return {'name': username, 'auth_state': auth_state}
+        name = '%s-%s' % (username, 
+                          hashlib.sha512(token.encode('utf-8')).hexdigest())
+        return {'name': name, 'auth_state': auth_state}
 
     @gen.coroutine
     def pre_spawn_start(self, user, spawner):
@@ -59,7 +62,6 @@ class D4ScienceAuthenticator(Authenticator):
             # auth_state not enabled
             return
         spawner.environment['GCUBE_TOKEN'] = auth_state['gcube-token']
-
 
 
 class LocalD4ScienceAuthenticator(LocalAuthenticator,
