@@ -72,8 +72,8 @@ class D4ScienceAuthenticator(Authenticator):
     auto_login = True
     login_handler = D4ScienceLoginHandler
 
-    def login_url(self, base_url):
-        return url_path_join(base_url, 'gcube-login')
+    #def login_url(self, base_url):
+    #    return url_path_join(base_url, 'gcube-login')
 
     @gen.coroutine
     def authenticate(self, handler, data=None):
@@ -92,5 +92,5 @@ class D4ScienceAuthenticator(Authenticator):
             return
         spawner.environment['GCUBE_TOKEN'] = auth_state['gcube-token']
 
-    def get_handlers(self, app):
-        return([(r'/gcube-login', self.login_handler)])
+    #def get_handlers(self, app):
+    #    return([(r'/gcube-login', self.login_handler)])
