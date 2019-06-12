@@ -26,7 +26,7 @@ D4SCIENCE_PROFILE= '2/people/profile'
 class D4ScienceLoginHandler(BaseHandler):
     @gen.coroutine
     def get(self):
-        user = self.get_current_user()
+        user = yield self.get_current_user()
         token = self.get_argument('gcube-token')
         if user and token:
             self.log.info('Clearing login cookie, new user?')
@@ -69,19 +69,17 @@ class D4ScienceLoginHandler(BaseHandler):
 
 
 class D4ScienceAuthenticator(Authenticator):
-    auto_login = True
     login_handler = D4ScienceLoginHandler
+    auto_login = True
 
-    #def login_url(self, base_url):
-    #    return url_path_join(base_url, 'gcube-login')
 
     @gen.coroutine
     def authenticate(self, handler, data=None):
         self.log.info("DATA: %s", data)
-        if not data.get('gcube-user'):
-            return
-        return {'name': data['gcube-user'],
-                'auth_data': data}
+        if data and data.get('gcube-user'):
+            return {'name': data['gcube-user'],
+                    'auth_data': data}
+        return None
 
     @gen.coroutine
     def pre_spawn_start(self, user, spawner):
@@ -92,5 +90,5 @@ class D4ScienceAuthenticator(Authenticator):
             return
         spawner.environment['GCUBE_TOKEN'] = auth_state['gcube-token']
 
-    #def get_handlers(self, app):
-    #    return([(r'/gcube-login', self.login_handler)])
+    def get_handlers(self, app):
+        return([(r'/login', self.login_handler)])
