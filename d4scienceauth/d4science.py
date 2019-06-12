@@ -72,13 +72,12 @@ class D4ScienceAuthenticator(Authenticator):
     login_handler = D4ScienceLoginHandler
     auto_login = True
 
-
     @gen.coroutine
     def authenticate(self, handler, data=None):
         self.log.info("DATA: %s", data)
         if data and data.get('gcube-user'):
             return {'name': data['gcube-user'],
-                    'auth_data': data}
+                    'auth_state': data}
         return None
 
     @gen.coroutine
