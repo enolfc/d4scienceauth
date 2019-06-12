@@ -27,10 +27,19 @@ class D4ScienceLoginHandler(BaseHandler):
     @gen.coroutine
     def get(self):
         user = self.get_current_user()
-        if user:
-            # make sure we don't do a mess here
+        token = self.get_argument('gcube-token')
+        if user and token:
+            self.log.info('Clearing login cookie, new user?')
             self.clear_login_cookie()
-        token = self.get_argument('gcube-token', '')
+            # make sure we don't do a mess here
+            self.redirect(url_concat(
+                    self.authenticator.login_url(self.hub.base_url),
+                    {'gcube-token': token}),
+                permanent=False)
+            return
+        if not token:
+            self.log.error('No gcube token. Out!')
+            raise web.HTTPError(403)
         http_client = AsyncHTTPClient()
         url = url_concat(url_path_join(D4SCIENCE_SOCIAL_URL,
                                        D4SCIENCE_PROFILE),
@@ -49,18 +58,30 @@ class D4ScienceLoginHandler(BaseHandler):
             self.log.error('Unable to get the user from gcube?')
             raise web.HTTPError(403)
 
-        self.log.info('%s is now authenticated!', username)
-        auth_state = {'gcube-token': token, 'gcube-user': username}
-        auth_state.update(resp_json['result'])
-        name = '%s-%s' % (username, 
-                          hashlib.sha512(token.encode('utf-8')).hexdigest())
-        return {'name': name, 'auth_state': auth_state}
+        self.log.info('D4Science user is %s', username)
+        data = {'gcube-token': token, 'gcube-user': username}
+        data.update(resp_json['result'])
+        self.log.info('HERE!')
+        user = yield self.login_user(data)
+        if user:
+            self._jupyterhub_user = user
+            self.redirect(self.get_next_url(user), permanent=False)
+
 
 class D4ScienceAuthenticator(Authenticator):
     auto_login = True
+    login_handler = D4ScienceLoginHandler
 
     def login_url(self, base_url):
         return url_path_join(base_url, 'gcube-login')
+
+    @gen.coroutine
+    def authenticate(self, handler, data=None):
+        self.log.info("DATA: %s", data)
+        if not data.get('gcube-user'):
+            return
+        return {'name': data['gcube-user'],
+                'auth_data': data}
 
     @gen.coroutine
     def pre_spawn_start(self, user, spawner):
@@ -72,6 +93,4 @@ class D4ScienceAuthenticator(Authenticator):
         spawner.environment['GCUBE_TOKEN'] = auth_state['gcube-token']
 
     def get_handlers(self, app):
-        #base = super(Authenticator, self).get_handlers(app)
-        return((r'/gcube-login', self.login_handler))
-        #return base
+        return([(r'/gcube-login', self.login_handler)])
