@@ -5,6 +5,7 @@ import base64
 import hashlib
 import json
 import os
+from xml.etree import ElementTree
 
 from tornado import gen, web
 
@@ -19,8 +20,11 @@ from jupyterhub.utils import url_path_join
 D4SCIENCE_SOCIAL_URL = (os.environ.get('D4SCIENCE_SOCIAL_URL') or
                         'https://socialnetworking1.d4science.org/'
                         'social-networking-library-ws/rest/')
-                        
 D4SCIENCE_PROFILE= '2/people/profile'
+
+D4SCIENCE_DM_REGISTRY_URL = (os.environ.get('D4SCIENCE_REGISTRY_URL') or
+                             'https://registry.d4science.org/icproxy/gcube/'
+                             'service/ServiceEndpoint/DataAnalysis/DataMiner')
 
 
 class D4ScienceLoginHandler(BaseHandler):
@@ -41,27 +45,47 @@ class D4ScienceLoginHandler(BaseHandler):
             self.log.error('No gcube token. Out!')
             raise web.HTTPError(403)
         http_client = AsyncHTTPClient()
-        url = url_concat(url_path_join(D4SCIENCE_SOCIAL_URL,
-                                       D4SCIENCE_PROFILE),
-                        {'gcube-token': token})
-        req = HTTPRequest(url, method='GET')
+        # discover user info
+        user_url = url_concat(url_path_join(D4SCIENCE_SOCIAL_URL,
+                                            D4SCIENCE_PROFILE),
+                              {'gcube-token': token})
+        req = HTTPRequest(user_url, method='GET')
         try:
             resp = yield http_client.fetch(req)
         except HTTPError as e:
             # whatever, get out
             self.log.warning('Something happened with gcube service: %s', e)
             raise web.HTTPError(403)
-
         resp_json = json.loads(resp.body.decode('utf8', 'replace'))
         username = resp_json.get('result', {}).get('username', '')
         if not username:
             self.log.error('Unable to get the user from gcube?')
             raise web.HTTPError(403)
 
+        # discover WPS
+        wps_endpoint = ''
+        discovery_url = url_concat(D4SCIENCE_DM_REGISTRY_URL,
+                                   {'gcube-token': token})
+        req = HTTPRequest(discovery_url, method='GET')
+        try:
+            resp = yield http_client.fetch(req)
+        except HTTPError as e:
+            # whatever, get out
+            self.log.warning('Something happened with gcube service: %s', e)
+            raise web.HTTPError(403)
+        root = ElementTree.fromstring(resp.body.decode('utf8', 'replace'))
+        for child in root.findall('Resource/Profile/AccessPoint/'
+                                  'Interface/Endpoint'):
+            entry_name = child.attrib["EntryName"]
+            if entry_name == "dataminer-prototypes.d4science.org":
+                wps_endpoint = child.text
+                self.log.info('WPS endpoint: %s', wps_endpoint)
+                break
+
         self.log.info('D4Science user is %s', username)
-        data = {'gcube-token': token, 'gcube-user': username}
+        data = {'gcube-token': token, 'gcube-user': username,
+                'wps-endpoint': wps_endpoint}
         data.update(resp_json['result'])
-        self.log.info('HERE!')
         user = yield self.login_user(data)
         if user:
             self._jupyterhub_user = user
@@ -74,7 +98,6 @@ class D4ScienceAuthenticator(Authenticator):
 
     @gen.coroutine
     def authenticate(self, handler, data=None):
-        self.log.info("DATA: %s", data)
         if data and data.get('gcube-user'):
             return {'name': data['gcube-user'],
                     'auth_state': data}
@@ -88,6 +111,7 @@ class D4ScienceAuthenticator(Authenticator):
             # auth_state not enabled
             return
         spawner.environment['GCUBE_TOKEN'] = auth_state['gcube-token']
+        spawner.environment['DATAMINER_URL'] = auth_state['wps-endpoint']
 
     def get_handlers(self, app):
         return([(r'/login', self.login_handler)])
