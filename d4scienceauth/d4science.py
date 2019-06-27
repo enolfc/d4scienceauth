@@ -5,6 +5,7 @@ import base64
 import hashlib
 import json
 import os
+from xml.etree import ElementTree
 
 from tornado import gen, web
 
@@ -22,8 +23,8 @@ D4SCIENCE_SOCIAL_URL = (os.environ.get('D4SCIENCE_SOCIAL_URL') or
 D4SCIENCE_PROFILE= '2/people/profile'
 
 D4SCIENCE_DM_REGISTRY_URL = (os.environ.get('D4SCIENCE_REGISTRY_URL') or
-                             'http://registry.d4science.org/icproxy/gcube/'
-                             'service/ServiceEndpoint/DataAnalysis/Dataminer')
+                             'https://registry.d4science.org/icproxy/gcube/'
+                             'service/ServiceEndpoint/DataAnalysis/DataMiner')
 
 
 class D4ScienceLoginHandler(BaseHandler):
@@ -44,11 +45,28 @@ class D4ScienceLoginHandler(BaseHandler):
             self.log.error('No gcube token. Out!')
             raise web.HTTPError(403)
         http_client = AsyncHTTPClient()
+        # discover user info
+        user_url = url_concat(url_path_join(D4SCIENCE_SOCIAL_URL,
+                                            D4SCIENCE_PROFILE),
+                              {'gcube-token': token})
+        req = HTTPRequest(user_url, method='GET')
+        try:
+            resp = yield http_client.fetch(req)
+        except HTTPError as e:
+            # whatever, get out
+            self.log.warning('Something happened with gcube service: %s', e)
+            raise web.HTTPError(403)
+        resp_json = json.loads(resp.body.decode('utf8', 'replace'))
+        username = resp_json.get('result', {}).get('username', '')
+        if not username:
+            self.log.error('Unable to get the user from gcube?')
+            raise web.HTTPError(403)
+
         # discover WPS
         wps_endpoint = ''
         discovery_url = url_concat(D4SCIENCE_DM_REGISTRY_URL,
                                    {'gcube-token': token})
-        req = HTTPRequest(url, method='GET')
+        req = HTTPRequest(discovery_url, method='GET')
         try:
             resp = yield http_client.fetch(req)
         except HTTPError as e:
@@ -56,19 +74,13 @@ class D4ScienceLoginHandler(BaseHandler):
             self.log.warning('Something happened with gcube service: %s', e)
             raise web.HTTPError(403)
         root = ElementTree.fromstring(resp.body.decode('utf8', 'replace'))
-        for child in root.findall("Result/Resource/Profile/AccessPoint/"
-                                  "Interface/Endpoint"):
+        for child in root.findall('Resource/Profile/AccessPoint/'
+                                  'Interface/Endpoint'):
             entry_name = child.attrib["EntryName"]
             if entry_name == "dataminer-prototypes.d4science.org":
                 wps_endpoint = child.text
+                self.log.info('WPS endpoint: %s', wps_endpoint)
                 break
-
-        # discover user info
-        resp_json = json.loads(resp.body.decode('utf8', 'replace'))
-        username = resp_json.get('result', {}).get('username', '')
-        if not username:
-            self.log.error('Unable to get the user from gcube?')
-            raise web.HTTPError(403)
 
         self.log.info('D4Science user is %s', username)
         data = {'gcube-token': token, 'gcube-user': username,
