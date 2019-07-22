@@ -82,7 +82,7 @@ class D4ScienceLoginHandler(BaseHandler):
                                   'Interface/Endpoint'):
             entry_name = child.attrib["EntryName"]
             self.log.info('entry_name %s', entry_name)
-            if entry_name == "dataminer-prototypes.d4science.org":
+            if entry_name != "GetCapabilities":
                 wps_endpoint = child.text
                 self.log.info('WPS endpoint: %s', wps_endpoint)
                 break
