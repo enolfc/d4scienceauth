@@ -30,6 +30,7 @@ D4SCIENCE_DM_REGISTRY_URL = (os.environ.get('D4SCIENCE_REGISTRY_URL') or
 class D4ScienceLoginHandler(BaseHandler):
     @gen.coroutine
     def get(self):
+        self.log.info('AUTH.')
         user = yield self.get_current_user()
         token = self.get_argument('gcube-token')
         if user and token:
@@ -63,26 +64,31 @@ class D4ScienceLoginHandler(BaseHandler):
             raise web.HTTPError(403)
 
         # discover WPS
+        self.log.info('Discover wps')
         wps_endpoint = ''
         discovery_url = url_concat(D4SCIENCE_DM_REGISTRY_URL,
                                    {'gcube-token': token})
         req = HTTPRequest(discovery_url, method='GET')
         try:
+            self.log.info('fetch')
             resp = yield http_client.fetch(req)
         except HTTPError as e:
             # whatever, get out
             self.log.warning('Something happened with gcube service: %s', e)
             raise web.HTTPError(403)
         root = ElementTree.fromstring(resp.body.decode('utf8', 'replace'))
+        self.log.info('root %s', root)
         for child in root.findall('Resource/Profile/AccessPoint/'
                                   'Interface/Endpoint'):
             entry_name = child.attrib["EntryName"]
+            self.log.info('entry_name %s', entry_name)
             if entry_name == "dataminer-prototypes.d4science.org":
                 wps_endpoint = child.text
                 self.log.info('WPS endpoint: %s', wps_endpoint)
                 break
 
         self.log.info('D4Science user is %s', username)
+        self.log.info('WPS %s', wps_endpoint)
         data = {'gcube-token': token, 'gcube-user': username,
                 'wps-endpoint': wps_endpoint}
         data.update(resp_json['result'])
